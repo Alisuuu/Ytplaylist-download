@@ -4,7 +4,7 @@
 
 ## 🚀 Instalação Rápida
 ```
-pkg update -y && pkg upgrade -y && pkg install python ffmpeg git -y && pip install yt-dlp --upgrade && termux-setup-storage && if [ ! -f yt_playlist_downloader.py ]; then curl -O https://raw.githubusercontent.com/Alisuuu/Ytplaylist-download/refs/heads/main/app.py; fi && python yt_playlist_downloader.py
+pkg update -y && pkg upgrade -y && pkg install python ffmpeg git -y && pip install yt-dlp --upgrade && termux-setup-storage && if [ ! -f yt_playlist_downloader.py ]; then curl -O https://raw.githubusercontent.com/Alisuuu/Ytplaylist-download/refs/heads/main/app.py && mv app.py yt_playlist_downloader.py; fi && python yt_playlist_downloader.py
 ```
 2. Cole a URL da playlist
 3. Escolha formato (mp3/mp4)
