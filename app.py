@@ -83,12 +83,28 @@ def download_playlist():
         elif "No such file or directory" in str(e):
             print("ℹ️ Solução: Execute no Termux: 'termux-setup-storage'")
 
-if __name__ == "__main__":
+def main():
     print("=== YouTube Downloader para Termux ===")
     print("Requisitos:")
     print("1. termux-setup-storage")
     print("2. pkg install ffmpeg python")
     print("3. pip install yt-dlp")
     print("="*40)
-    download_playlist()
+    
+    while True:
+        print("\nOpções:")
+        print("1. Baixar música/playlist")
+        print("2. Sair")
+        
+        escolha = input("Escolha uma opção (1/2): ").strip()
+        
+        if escolha == "1":
+            download_playlist()
+        elif escolha == "2":
+            print("Saindo...")
+            break
+        else:
+            print("Opção inválida! Digite 1 ou 2.")
 
+if __name__ == "__main__":
+    main()
