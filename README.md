@@ -8,7 +8,7 @@ pkg update -y && pkg upgrade -y && pkg install python ffmpeg git -y && pip insta
 ```
 2. Cole a URL da playlist
 3. Escolha formato (mp3/mp4)
-4. Os arquivos serão salvos em `/storage/emulated/0/Download/`
+4. Os arquivos serão salvos em `/storage/emulated/0/music`
 
 ## ✨ Recursos
 - Conversão automática para MP3/MP4
