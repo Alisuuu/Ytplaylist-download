@@ -1,107 +1,79 @@
-#!/data/data/com.termux/files/usr/bin/python3
-
 import os
-import sys
-import subprocess
+from pathlib import Path
+import yt_dlp  # Necessário para o download - instale com: pip install yt-dlp
 
-def install_dependencies():
-    """Instala todas as dependências automaticamente"""
-    print("🔧 Instalando dependências necessárias...")
-    commands = [
-        'pkg update -y',
-        'pkg upgrade -y',
-        'pkg install -y python ffmpeg git',
-        'pip install --upgrade pip',
-        'pip install yt-dlp mutagen',
-        'termux-setup-storage'
+# Configuração para Termux
+FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
+
+def get_music_folder():
+    """Cria e retorna o caminho para a pasta music"""
+    # Tenta encontrar a pasta Music padrão do Android
+    possible_paths = [
+        "/storage/emulated/0/Music",
+        "/storage/emulated/0/music",
+        "/sdcard/Music",
+        "/sdcard/music",
+        os.path.join(str(Path.home()), "Music"),
+        os.path.join(str(Path.home()), "music"),
     ]
     
-    for cmd in commands:
-        try:
-            print(f"Executando: {cmd}")
-            subprocess.run(cmd, shell=True, check=True)
-        except Exception as e:
-            print(f"⚠️ Erro ao executar {cmd}: {str(e)}")
-            return False
-    return True
-
-def main():
-    # Verifica e instala dependências
-    if not install_dependencies():
-        print("❌ Falha na instalação das dependências")
-        sys.exit(1)
-
-    # Agora importa os módulos após instalação
-    try:
-        import yt_dlp
-        from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC
-        from mutagen.mp3 import MP3
-        from urllib.request import urlopen
-    except ImportError as e:
-        print(f"❌ Erro crítico: {str(e)}")
-        sys.exit(1)
-
-    # Configurações principais
-    FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
-    MUSIC_FOLDER = "/storage/emulated/0/Music"
-
-    def create_music_folder():
-        """Cria a pasta de música se não existir"""
-        os.makedirs(MUSIC_FOLDER, exist_ok=True)
-        return MUSIC_FOLDER
-
-    def download_and_organize():
-        """Função principal de download"""
-        url = input("\n🎵 Cole a URL do YouTube/YouTube Music: ").strip()
-        
-        if not url.startswith(('http://', 'https://')):
-            print("\n⚠️ URL inválida! Deve começar com http:// ou https://")
-            return
-
-        music_path = create_music_folder()
-        print(f"\n📁 Pasta de destino: {music_path}")
-
-        ydl_opts = {
-            'ffmpeg_location': FFMPEG_PATH,
-            'format': 'bestaudio/best',
-            'outtmpl': os.path.join(music_path, '%(title)s.%(ext)s'),
-            'postprocessors': [
-                {
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '320',
-                },
-                {
-                    'key': 'FFmpegMetadata',
-                    'add_metadata': True,
-                },
-                {
-                    'key': 'EmbedThumbnail',
-                }
-            ],
-            'writethumbnail': True,
-            'quiet': False,
-        }
-
-        try:
-            print("\n⬇️ Baixando... (Isso pode levar alguns minutos)")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            print("\n✅ Download concluído com sucesso!")
-            print(f"🎧 Música salva em: {music_path}")
-        except Exception as e:
-            print(f"\n❌ Erro durante o download: {str(e)}")
-
-    # Interface do usuário
-    print("\n=== YouTube Music Downloader ===")
-    print("📌 Funcionalidades:")
-    print("- Baixa músicas do YouTube e YouTube Music")
-    print("- Converte para MP3 320kbps")
-    print("- Adiciona metadados e capa automaticamente")
-    print("="*50)
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
     
-    download_and_organize()
-    input("\nPressione Enter para sair...")
+    # Se não encontrar, cria uma pasta music no armazenamento interno
+    music_path = os.path.join("/storage/emulated/0", "Music")
+    os.makedirs(music_path, exist_ok=True)
+    return music_path
+
+def download_playlist():
+    url = input("▶️ URL da playlist/vídeo: ").strip()
+    
+    if not url.startswith(('http://', 'https://')):
+        print("❌ URL inválida! Use http:// ou https://")
+        return
+
+    formato = input("🎵 Formato (mp3/mp4): ").lower().strip()
+    while formato not in ["mp3", "mp4"]:
+        formato = input("⚠️ Digite mp3 ou mp4: ").lower().strip()
+
+    music_path = get_music_folder()
+    print(f"📁 Os arquivos serão salvos em: {music_path}")
+    
+    # Configurações do yt-dlp
+    ydl_opts = {
+        'ffmpeg_location': FFMPEG_PATH,
+        'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': os.path.join(music_path, '%(title)s.%(ext)s'),
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }] if formato == 'mp3' else [],
+        'quiet': False,
+        'no_warnings': False,
+        'progress_hooks': [lambda d: print(f"\r⬇️ Progresso: {d.get('_percent_str', '?')} {d.get('_speed_str', '')} {d.get('_eta_str', '')}", end='')],
+    }
+
+    try:
+        print("\n⏳ Iniciando download...")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        print(f"\n✅ Download concluído! Arquivos salvos em: {music_path}")
+    except Exception as e:
+        print(f"\n❌ Erro durante o download: {str(e)}")
+        if "ffmpeg" in str(e).lower():
+            print("ℹ️ Solução: Execute no Termux: 'pkg install ffmpeg'")
+        elif "No such file or directory" in str(e):
+            print("ℹ️ Solução: Execute no Termux: 'termux-setup-storage'")
 
 if __name__ == "__main__":
-    main()
+    print("=== YouTube Downloader para Termux ===")
+    print("Requisitos:")
+    print("1. termux-setup-storage")
+    print("2. pkg install ffmpeg python")
+    print("3. pip install yt-dlp")
+    print("="*40)
+    
+    download_playlist()
+    
