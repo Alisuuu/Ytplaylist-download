@@ -26,24 +26,6 @@ def sanitize_path_component(text):
     """Remove caracteres inválidos para nomes de pastas"""
     return ''.join(c for c in text if c.isalnum() or c in " _-").strip() or "Desconhecido"
 
-def create_directory_structure(base_path, artist, album):
-    """Cria a estrutura de pastas Artista/Álbum"""
-    # Sanitiza os nomes
-    artist = sanitize_path_component(artist)
-    album = sanitize_path_component(album)
-    
-    # Se não tiver álbum, usa "Desconhecido"
-    if not album or album.lower() == "none":
-        album = "Desconhecido"
-    
-    # Cria o caminho completo
-    full_path = os.path.join(base_path, artist, album)
-    
-    # Cria as pastas se não existirem
-    os.makedirs(full_path, exist_ok=True)
-    
-    return full_path
-
 def download_playlist():
     url = input("▶️ URL da playlist/vídeo: ").strip()
     if not url.startswith(('http://', 'https://')):
@@ -63,23 +45,11 @@ def download_playlist():
         elif d['status'] == 'finished':
             print("\n✅ Download finalizado. Convertendo...")
 
-    def get_outtmpl(info):
-        """Gera o caminho de saída baseado nos metadados"""
-        artist = info.get('artist') or info.get('uploader') or "Desconhecido"
-        album = info.get('album') or "Desconhecido"
-        title = info.get('title') or "Sem título"
-        
-        # Cria a estrutura de pastas
-        base_dir = create_directory_structure(music_path, artist, album)
-        
-        # Retorna o caminho completo do arquivo
-        ext = info.get('ext', 'mp3' if formato == 'mp3' else 'mp4')
-        return os.path.join(base_dir, f"{sanitize_path_component(title)}.{ext}")
-
     ydl_opts = {
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': get_outtmpl,
+        'outtmpl': os.path.join(music_path, '%(album|Desconhecido)s/%(title)s.%(ext)s') if formato == 'mp3'
+                   else os.path.join(music_path, '%(title)s.%(ext)s'),
         'postprocessors': [
             {
                 'key': 'FFmpegExtractAudio',
@@ -99,14 +69,13 @@ def download_playlist():
         'progress_hooks': [progress_hook],
         'quiet': False,
         'no_warnings': False,
-        'extract_flat': False,
     }
 
     try:
         print("\n⏳ Iniciando download...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        print(f"\n✅ Tudo pronto! Arquivos organizados em: {music_path}")
+        print(f"\n✅ Tudo pronto! Arquivos salvos em: {music_path}")
     except Exception as e:
         print(f"\n❌ Erro durante o download: {str(e)}")
         if "ffmpeg" in str(e).lower():
