@@ -1,13 +1,12 @@
 import os
 from pathlib import Path
-import yt_dlp  # Necessário para o download - instale com: pip install yt-dlp
+import yt_dlp
 
-# Configuração para Termux
+# Caminho para o ffmpeg no Termux
 FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
 
 def get_music_folder():
-    """Cria e retorna o caminho para a pasta music"""
-    # Tenta encontrar a pasta Music padrão do Android
+    """Cria e retorna o caminho para a pasta Music"""
     possible_paths = [
         "/storage/emulated/0/Music",
         "/storage/emulated/0/music",
@@ -16,19 +15,19 @@ def get_music_folder():
         os.path.join(str(Path.home()), "Music"),
         os.path.join(str(Path.home()), "music"),
     ]
-    
     for path in possible_paths:
         if os.path.exists(path):
             return path
-    
-    # Se não encontrar, cria uma pasta music no armazenamento interno
     music_path = os.path.join("/storage/emulated/0", "Music")
     os.makedirs(music_path, exist_ok=True)
     return music_path
 
+def sanitize_path_component(text):
+    """Remove caracteres inválidos para nomes de pastas"""
+    return ''.join(c for c in text if c.isalnum() or c in " _-").strip() or "Desconhecido"
+
 def download_playlist():
     url = input("▶️ URL da playlist/vídeo: ").strip()
-    
     if not url.startswith(('http://', 'https://')):
         print("❌ URL inválida! Use http:// ou https://")
         return
@@ -39,27 +38,44 @@ def download_playlist():
 
     music_path = get_music_folder()
     print(f"📁 Os arquivos serão salvos em: {music_path}")
-    
-    # Configurações do yt-dlp
+
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            print(f"\r⬇️ {d.get('_percent_str', '')} {d.get('_speed_str', '')} {d.get('_eta_str', '')}", end='')
+        elif d['status'] == 'finished':
+            print("\n✅ Download finalizado. Convertendo...")
+
     ydl_opts = {
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': os.path.join(music_path, '%(title)s.%(ext)s'),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }] if formato == 'mp3' else [],
+        'outtmpl': os.path.join(music_path, '%(album|Desconhecido)s/%(title)s.%(ext)s') if formato == 'mp3'
+                   else os.path.join(music_path, '%(title)s.%(ext)s'),
+        'postprocessors': [
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            },
+            {
+                'key': 'EmbedThumbnail'
+            },
+            {
+                'key': 'FFmpegMetadata',
+            },
+        ] if formato == 'mp3' else [],
+        'writethumbnail': True if formato == 'mp3' else False,
+        'embed-metadata': True if formato == 'mp3' else False,
+        'embed-thumbnail': True if formato == 'mp3' else False,
+        'progress_hooks': [progress_hook],
         'quiet': False,
         'no_warnings': False,
-        'progress_hooks': [lambda d: print(f"\r⬇️ Progresso: {d.get('_percent_str', '?')} {d.get('_speed_str', '')} {d.get('_eta_str', '')}", end='')],
     }
 
     try:
         print("\n⏳ Iniciando download...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        print(f"\n✅ Download concluído! Arquivos salvos em: {music_path}")
+        print(f"\n✅ Tudo pronto! Arquivos salvos em: {music_path}")
     except Exception as e:
         print(f"\n❌ Erro durante o download: {str(e)}")
         if "ffmpeg" in str(e).lower():
@@ -74,6 +90,5 @@ if __name__ == "__main__":
     print("2. pkg install ffmpeg python")
     print("3. pip install yt-dlp")
     print("="*40)
-    
     download_playlist()
     
