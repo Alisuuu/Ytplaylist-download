@@ -1,6 +1,9 @@
 import os
-from pathlib import Path
 import yt_dlp
+from mutagen.mp3 import MP3
+from mutagen.id3 import ID3, TIT2, TPE1, TALB, TPE2, TCON, TDRC, TRCK, APIC
+from mutagen.easyid3 import EasyID3
+from urllib.request import urlopen
 
 FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
 
@@ -10,12 +13,54 @@ def get_music_folder():
     os.makedirs(music_path, exist_ok=True)
     return music_path
 
-def sanitize_filename(filename):
-    """Remove caracteres inválidos para nomes de arquivo"""
-    invalid_chars = '<>:"/\\|?*'
-    for char in invalid_chars:
-        filename = filename.replace(char, '_')
-    return filename[:240]  # Limita o tamanho do nome
+def add_proper_metadata(filepath, info):
+    """Adiciona metadados de forma compatível com a maioria dos players"""
+    try:
+        # Primeiro limpa quaisquer metadados existentes
+        try:
+            audio = MP3(filepath, ID3=ID3)
+            audio.delete()
+            audio.save()
+        except:
+            pass
+
+        # Adiciona metadados básicos usando EasyID3 (mais compatível)
+        audio = EasyID3(filepath)
+        
+        # Metadados essenciais
+        audio['title'] = info.get('title', 'Desconhecido')
+        audio['artist'] = info.get('uploader', 'Desconhecido')
+        audio['album'] = info.get('title', 'Desconhecido')
+        
+        # Metadados opcionais
+        if 'track' in info:
+            audio['tracknumber'] = str(info['track'])
+        if 'release_year' in info:
+            audio['date'] = str(info['release_year'])
+        
+        audio.save()
+
+        # Adiciona a capa do álbum (usando ID3 normal)
+        audio = MP3(filepath, ID3=ID3)
+        if info.get('thumbnail'):
+            try:
+                with urlopen(info['thumbnail']) as img:
+                    audio.tags.add(
+                        APIC(
+                            encoding=3,  # UTF-8
+                            mime='image/jpeg',
+                            type=3,  # 3 é para capa do álbum
+                            desc='Capa',
+                            data=img.read()
+                        )
+                    )
+            except Exception as e:
+                print(f"⚠️ Não foi possível adicionar capa: {e}")
+
+        audio.save()
+        
+    except Exception as e:
+        print(f"⚠️ Erro ao adicionar metadados: {e}")
 
 def download_media():
     url = input("▶️ URL do vídeo/playlist: ").strip()
@@ -36,18 +81,10 @@ def download_media():
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
-            },
-            {
-                'key': 'FFmpegMetadata',
-                'add_metadata': True,
-            },
-            {
-                'key': 'EmbedThumbnail',
             }
         ],
         'writethumbnail': True,
         'restrictfilenames': True,
-        'fixup': 'warn',
         'quiet': False,
         'no_warnings': False,
         'extract_flat': False,
@@ -58,39 +95,28 @@ def download_media():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             
-            # Renomeia os arquivos para garantir compatibilidade
+            # Processa metadados para cada arquivo
             if 'entries' in info:  # Playlist
                 for entry in info['entries']:
                     if entry:
-                        old_path = os.path.join(music_path, f"{entry['title']}.mp3")
-                        new_name = sanitize_filename(entry['title']) + ".mp3"
-                        new_path = os.path.join(music_path, new_name)
-                        os.rename(old_path, new_path)
+                        filepath = os.path.join(music_path, f"{entry['title']}.mp3")
+                        add_proper_metadata(filepath, entry)
             else:  # Vídeo único
-                old_path = os.path.join(music_path, f"{info['title']}.mp3")
-                new_name = sanitize_filename(info['title']) + ".mp3"
-                new_path = os.path.join(music_path, new_name)
-                os.rename(old_path, new_path)
+                filepath = os.path.join(music_path, f"{info['title']}.mp3")
+                add_proper_metadata(filepath, info)
 
         print("\n✅ Download concluído com sucesso!")
-        print(f"📌 Pasta de destino: {music_path}")
-        print("🎧 Use um player como VLC ou MX Player para reproduzir")
+        print("🎧 Os arquivos agora devem ser reconhecidos por todos os players populares")
 
     except Exception as e:
         print(f"\n❌ Erro: {str(e)}")
-        if "ffmpeg" in str(e).lower():
-            print("🔧 Solução: Execute 'pkg install ffmpeg' no Termux")
-        elif "No space left" in str(e):
-            print("🔧 Solução: Libere espaço no dispositivo")
-        elif "unavailable" in str(e).lower():
-            print("🔧 O vídeo pode estar restrito ou privado")
 
 if __name__ == "__main__":
-    print("=== YouTube to MP3 Converter ===")
-    print("Requisitos instalados? Execute:")
+    print("=== Conversor YouTube para MP3 (Metadados Corrigidos) ===")
+    print("Certifique-se de ter instalado:")
     print("1. termux-setup-storage")
     print("2. pkg install ffmpeg python")
-    print("3. pip install yt-dlp")
+    print("3. pip install yt-dlp mutagen")
     print("="*40)
     
     download_media()
