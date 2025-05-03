@@ -1,22 +1,30 @@
-import yt_dlp
 import os
 from pathlib import Path
 
 # Configuração especial para Termux
 FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
 
-def get_download_folder():
-    """Obtém o caminho de downloads do Android"""
+def get_music_folder():
+    """Obtém o caminho da pasta music no Android"""
     android_paths = [
-        "/storage/emulated/0/Download",
-        "/sdcard/Download",
-        os.path.join(str(Path.home()), "storage", "shared", "Download")  # Corrigido: parêntese fechado
+        "/storage/emulated/0/Music",
+        "/storage/emulated/0/music",
+        "/sdcard/Music",
+        "/sdcard/music",
+        os.path.join(str(Path.home()), "storage", "shared", "Music"),
+        os.path.join(str(Path.home()), "storage", "shared", "music"),
+        os.path.join(str(Path.home()), "Music"),
+        os.path.join(str(Path.home()), "music"),
     ]
     
     for path in android_paths:
         if os.path.exists(path):
             return path
-    return os.getcwd()  # Fallback para pasta atual
+    
+    # Se não encontrar, cria uma pasta music no diretório atual
+    music_path = os.path.join(os.getcwd(), "music")
+    os.makedirs(music_path, exist_ok=True)
+    return music_path
 
 def download_playlist():
     url = input("▶️ URL da playlist: ").strip()
@@ -29,14 +37,14 @@ def download_playlist():
     while formato not in ["mp3", "mp4"]:
         formato = input("⚠️ Digite mp3 ou mp4: ").lower()
 
-    download_path = get_download_folder()
-    os.makedirs(download_path, exist_ok=True)
+    music_path = get_music_folder()
+    os.makedirs(music_path, exist_ok=True)
     
     # Configuração robusta para Termux
     ydl_opts = {
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestaudio/best' if formato == 'mp3' else 'best[ext=mp4]',
-        'outtmpl': f'{download_path}/%(title)s.%(ext)s',
+        'outtmpl': f'{music_path}/%(title)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -48,7 +56,7 @@ def download_playlist():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             print("\n⬇️ Baixando...")
             ydl.download([url])
-        print(f"\n✅ Concluído! Arquivos em: {download_path}")
+        print(f"\n✅ Concluído! Arquivos em: {music_path}")
     except Exception as e:
         print(f"\n❌ Falha crítica: {str(e)}")
         if "ffmpeg" in str(e).lower():
@@ -59,4 +67,6 @@ if __name__ == "__main__":
     print("Certifique-se de ter executado:")
     print("termux-setup-storage")
     print("pkg install ffmpeg")
+    print("pkg install python")
+    print("pip install yt-dlp")
     download_playlist()
