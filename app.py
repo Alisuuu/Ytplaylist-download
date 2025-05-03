@@ -9,7 +9,7 @@ from urllib.request import urlopen
 
 def install_dependencies():
     """Instala todas as dependências automaticamente"""
-    print("🔧 Instalando/Atualizando dependências...")
+    print("🔧 Instalando dependências...")
     commands = [
         'pkg update -y',
         'pkg upgrade -y',
@@ -20,20 +20,21 @@ def install_dependencies():
     
     for cmd in commands:
         try:
-            subprocess.run(cmd.split(), check=True)
+            subprocess.run(cmd, shell=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"⚠️ Erro ao executar: {cmd}")
             print(f"Detalhes: {e}")
-            sys.exit(1)
+            return False
+    return True
 
 def check_dependencies():
     """Verifica se todas as dependências estão instaladas"""
     try:
         import yt_dlp
         from mutagen.id3 import ID3
+        return True
     except ImportError:
-        print("📦 Dependências faltando, instalando...")
-        install_dependencies()
+        return install_dependencies()
 
 def get_music_folder():
     """Cria e retorna o caminho para a pasta Music"""
@@ -46,20 +47,24 @@ def add_metadata(filepath, info):
     try:
         audio = MP3(filepath, ID3=ID3)
         
-        # Adiciona metadados básicos
-        audio.tags.add(TIT2(encoding=3, text=info.get('title', 'Desconhecido')))
-        audio.tags.add(TPE1(encoding=3, text=info.get('uploader', 'Desconhecido')))
-        audio.tags.add(TALB(encoding=3, text=info.get('title', 'Desconhecido')))
+        # Metadados básicos
+        title = info.get('title', 'Desconhecido')
+        uploader = info.get('uploader', 'Desconhecido')
         
-        # Adiciona capa do álbum
-        if info.get('thumbnail'):
+        audio.tags.add(TIT2(encoding=3, text=title))
+        audio.tags.add(TPE1(encoding=3, text=uploader))
+        audio.tags.add(TALB(encoding=3, text=title))
+        
+        # Capa do álbum (se disponível)
+        thumbnail = info.get('thumbnail') or info.get('thumbnails', [{}])[-1].get('url', '')
+        if thumbnail:
             try:
-                with urlopen(info['thumbnail']) as img:
+                with urlopen(thumbnail) as img:
                     audio.tags.add(
                         APIC(
                             encoding=3,
                             mime='image/jpeg',
-                            type=3,  # 3 = capa do álbum
+                            type=3,
                             desc='Capa',
                             data=img.read()
                         )
@@ -71,15 +76,17 @@ def add_metadata(filepath, info):
     except Exception as e:
         print(f"⚠️ Erro nos metadados: {e}")
 
-def download_from_ytmusic():
+def download_audio():
     """Função principal de download"""
-    check_dependencies()
-    
+    if not check_dependencies():
+        print("❌ Falha ao instalar dependências")
+        return
+
     FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
-    url = input("\n🎵 Cole a URL do YouTube Music: ").strip()
+    url = input("\n🎵 Cole a URL do YouTube/YouTube Music: ").strip()
     
-    if "music.youtube.com" not in url.lower():
-        print("\n⚠️ Use uma URL do YouTube Music (ex: music.youtube.com/watch?v=...)")
+    if not url.startswith(('http://', 'https://')):
+        print("\n⚠️ URL inválida! Deve começar com http:// ou https://")
         return
 
     music_path = get_music_folder()
@@ -106,10 +113,11 @@ def download_from_ytmusic():
         'writethumbnail': True,
         'quiet': False,
         'no_warnings': False,
+        'extract_flat': False,
     }
 
     try:
-        print("\n⬇️ Baixando música...")
+        print("\n⬇️ Baixando áudio...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             
@@ -123,28 +131,21 @@ def download_from_ytmusic():
                 filepath = os.path.join(music_path, f"{info['title']}.mp3")
                 add_metadata(filepath, info)
 
-        print("\n✅ Download concluído com sucesso!")
-        print(f"🎧 Arquivo salvo em: {music_path}")
+        print("\n✅ Download concluído!")
+        print(f"🎧 Arquivo(s) salvo(s) em: {music_path}")
 
     except Exception as e:
         print(f"\n❌ Erro durante o download: {str(e)}")
 
 if __name__ == "__main__":
-    print("\n=== YouTube Music Downloader ===")
-    print("📌 Este script irá:")
-    print("- Instalar automaticamente as dependências")
-    print("- Baixar músicas do YouTube Music")
-    print("- Adicionar metadados e capas automaticamente")
+    print("\n=== YouTube/YT Music Downloader ===")
+    print("📌 Este script:")
+    print("- Baixa de YouTube e YouTube Music")
+    print("- Mantém metadados e capas")
+    print("- Qualidade 320kbps")
     print("="*50)
     
-    # Verifica e instala dependências se necessário
-    try:
-        import yt_dlp
-        from mutagen.id3 import ID3
-    except ImportError:
-        install_dependencies()
+    download_audio()
     
-    download_from_ytmusic()
-    
-    # Mantém o terminal aberto para ver os resultados
+    # Mantém o terminal aberto
     input("\nPressione Enter para sair...")
