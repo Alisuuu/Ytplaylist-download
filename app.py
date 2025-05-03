@@ -33,46 +33,42 @@ def download_playlist():
     base_path = get_music_folder()
     print(f"📁 Salvando em: {base_path}")
 
-    def sanitize_template(info):
-        artist = info.get('artist') or "Desconhecido"
-        title = info.get('title') or "Sem título"
-        album = info.get('album')
+    def generate_outtmpl(info_dict):
+        artist = info_dict.get('artist') or info_dict.get('uploader') or "Desconhecido"
+        album = info_dict.get('album')
+        title = info_dict.get('title') or "Sem título"
 
         artist = sanitize(artist)
         title = sanitize(title)
-
         if album:
             album = sanitize(album)
             return os.path.join(base_path, artist, album, f"{title}.%(ext)s")
         else:
             return os.path.join(base_path, artist, f"{title}.%(ext)s")
 
-    class CustomPP(yt_dlp.postprocessor.PostProcessor):
-        def run(self, info):
-            self._downloader.params['outtmpl'] = sanitize_template(info)
-            return [], info
+    class AlbumPathPP(yt_dlp.postprocessor.PostProcessor):
+        def run(self, info_dict):
+            self._downloader.params['outtmpl'] = generate_outtmpl(info_dict)
+            return [], info_dict
 
     ydl_opts = {
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo+bestaudio/best',
         'quiet': False,
         'no_warnings': False,
-        'writethumbnail': True if formato == 'mp3' else False,
-        'embed-thumbnail': True if formato == 'mp3' else False,
         'progress_hooks': [lambda d: print(f"\r⬇️ {d.get('_percent_str', '')} {d.get('_speed_str', '')} {d.get('_eta_str', '')}", end='')],
         'postprocessors': [
             {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata'},
         ] if formato == 'mp3' else [],
-        'outtmpl': '%(title)s.%(ext)s',  # temporário, será sobrescrito pelo CustomPP
-        'postprocessor_hooks': [],
+        'outtmpl': '%(title)s.%(ext)s',  # temporário
     }
 
     try:
         print("\n⏳ Baixando...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.add_post_processor(CustomPP())
+            ydl.add_post_processor(AlbumPathPP())
             ydl.download([url])
         print("\n✅ Finalizado!")
     except Exception as e:
