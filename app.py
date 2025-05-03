@@ -51,12 +51,19 @@ def download_playlist():
             self._downloader.params['outtmpl'] = generate_outtmpl(info_dict)
             return [], info_dict
 
+    def progress_hook(d):
+        if isinstance(d, dict) and d.get('status') == 'downloading':
+            percent = d.get('_percent_str', '').strip()
+            speed = d.get('_speed_str', '').strip()
+            eta = d.get('_eta_str', '').strip()
+            print(f"\r⬇️ {percent} {speed} ETA: {eta}", end='')
+
     ydl_opts = {
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo+bestaudio/best',
         'quiet': False,
         'no_warnings': False,
-        'progress_hooks': [lambda d: print(f"\r⬇️ {d.get('_percent_str', '')} {d.get('_speed_str', '')} {d.get('_eta_str', '')}", end='')],
+        'progress_hooks': [progress_hook],
         'postprocessors': [
             {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
             {'key': 'EmbedThumbnail'},
