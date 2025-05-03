@@ -52,11 +52,14 @@ def download_playlist():
             return [], info_dict
 
     def progress_hook(d):
-        if isinstance(d, dict) and d.get('status') == 'downloading':
-            percent = d.get('_percent_str', '').strip()
-            speed = d.get('_speed_str', '').strip()
-            eta = d.get('_eta_str', '').strip()
-            print(f"\r⬇️ {percent} {speed} ETA: {eta}", end='')
+        if not isinstance(d, dict):
+            return
+        if d.get('status') != 'downloading':
+            return
+        percent = d.get('_percent_str', '').strip()
+        speed = d.get('_speed_str', '').strip()
+        eta = d.get('_eta_str', '').strip()
+        print(f"\r⬇️ {percent} {speed} ETA: {eta}", end='')
 
     ydl_opts = {
         'ffmpeg_location': FFMPEG_PATH,
@@ -69,7 +72,7 @@ def download_playlist():
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata'},
         ] if formato == 'mp3' else [],
-        'outtmpl': '%(title)s.%(ext)s',  # temporário
+        'outtmpl': '%(title)s.%(ext)s',
     }
 
     try:
