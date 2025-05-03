@@ -1,112 +1,94 @@
 import os
-import re
-import subprocess
 from pathlib import Path
-from ytmusicapi import YTMusic
-from mutagen.easyid3 import EasyID3
-from mutagen.mp3 import MP3
 import yt_dlp
 
-# Função para instalar dependências do sistema e pacotes Python
-def install_dependencies():
-    try:
-        print("🔧 Instalando dependências...")
-        subprocess.check_call(["pkg", "update", "-y"])
-        subprocess.check_call(["pkg", "upgrade", "-y"])
-        subprocess.check_call(["pkg", "install", "python", "ffmpeg", "git", "-y"])
-        subprocess.check_call(["pip", "install", "yt-dlp", "ytmusicapi", "mutagen"])
-        subprocess.check_call(["termux-setup-storage"])
-        print("✅ Dependências instaladas com sucesso.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Erro ao instalar dependências: {e}")
-        exit(1)
+# Caminho para o ffmpeg no Termux
+FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
 
-# Função para obter o caminho da pasta de músicas
 def get_music_folder():
-    base = "/storage/emulated/0/Music"
-    os.makedirs(base, exist_ok=True)
-    return base
+    """Cria e retorna o caminho para a pasta Music"""
+    possible_paths = [
+        "/storage/emulated/0/Music",
+        "/storage/emulated/0/music",
+        "/sdcard/Music",
+        "/sdcard/music",
+        os.path.join(str(Path.home()), "Music"),
+        os.path.join(str(Path.home()), "music"),
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+    music_path = os.path.join("/storage/emulated/0", "Music")
+    os.makedirs(music_path, exist_ok=True)
+    return music_path
 
-# Função para sanitizar o nome da pasta ou arquivo (remover caracteres inválidos)
-def sanitize(name):
-    return re.sub(r'[\\/*?:"<>|]', "", name)
+def sanitize_path_component(text):
+    """Remove caracteres inválidos para nomes de pastas"""
+    return ''.join(c for c in text if c.isalnum() or c in " _-").strip() or "Desconhecido"
 
-# Função para buscar os metadados da música no YouTube Music
-def fetch_metadata(query):
-    search = ytmusic.search(query, filter="songs")
-    if not search:
-        return None
-    data = search[0]
-    artist = data["artists"][0]["name"] if data.get("artists") else "Desconhecido"
-    album = data["album"]["name"] if data.get("album") else None
-    title = data["title"]
-    return {
-        "artist": sanitize(artist),
-        "album": sanitize(album) if album else None,
-        "title": sanitize(title)
-    }
-
-# Função para adicionar os metadados ID3 no arquivo MP3
-def set_id3_tags(file_path, metadata):
-    audio = MP3(file_path, ID3=EasyID3)
-    audio["title"] = metadata["title"]
-    audio["artist"] = metadata["artist"]
-    if metadata["album"]:
-        audio["album"] = metadata["album"]
-    audio.save()
-
-# Função para mostrar o progresso do download
-def progress_hook(d):
-    if not isinstance(d, dict) or d.get('status') != 'downloading':
+def download_playlist():
+    url = input("▶️ URL da playlist/vídeo: ").strip()
+    if not url.startswith(('http://', 'https://')):
+        print("❌ URL inválida! Use http:// ou https://")
         return
-    print(f"\r⬇️ {d.get('_percent_str', '').strip()} {d.get('_speed_str', '').strip()} ETA: {d.get('_eta_str', '').strip()}", end='')
 
-# Função principal para baixar a música
-def download_music():
-    url = input("🎵 Link do vídeo ou playlist: ").strip()
-    metadata = fetch_metadata(url)
-    if not metadata:
-        print("⚠️ Não foi possível obter metadados. Usando título do vídeo.")
-        metadata = {"artist": "Desconhecido", "album": None, "title": "%(title)s"}
+    formato = input("🎵 Formato (mp3/mp4): ").lower().strip()
+    while formato not in ["mp3", "mp4"]:
+        formato = input("⚠️ Digite mp3 ou mp4: ").lower().strip()
 
-    base = get_music_folder()
-    target_dir = os.path.join(base, metadata["artist"])
-    if metadata["album"]:
-        target_dir = os.path.join(target_dir, metadata["album"])
-    os.makedirs(target_dir, exist_ok=True)
+    music_path = get_music_folder()
+    print(f"📁 Os arquivos serão salvos em: {music_path}")
 
-    outtmpl = os.path.join(target_dir, f"{metadata['title']}.%(ext)s")
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            print(f"\r⬇️ {d.get('_percent_str', '')} {d.get('_speed_str', '')} {d.get('_eta_str', '')}", end='')
+        elif d['status'] == 'finished':
+            print("\n✅ Download finalizado. Convertendo...")
 
-    opts = {
-        'format': 'bestaudio/best',
-        'ffmpeg_location': "/data/data/com.termux/files/usr/bin/ffmpeg",
-        'outtmpl': outtmpl,
-        'quiet': False,
-        'no_warnings': True,
-        'progress_hooks': [progress_hook],
+    ydl_opts = {
+        'ffmpeg_location': FFMPEG_PATH,
+        'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': os.path.join(music_path, '%(album|Desconhecido)s/%(title)s.%(ext)s') if formato == 'mp3'
+                   else os.path.join(music_path, '%(title)s.%(ext)s'),
         'postprocessors': [
-            {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}
-        ]
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            },
+            {
+                'key': 'EmbedThumbnail'
+            },
+            {
+                'key': 'FFmpegMetadata',
+            },
+        ] if formato == 'mp3' else [],
+        'writethumbnail': True if formato == 'mp3' else False,
+        'embed-metadata': True if formato == 'mp3' else False,
+        'embed-thumbnail': True if formato == 'mp3' else False,
+        'progress_hooks': [progress_hook],
+        'quiet': False,
+        'no_warnings': False,
     }
 
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            print("\n⏳ Baixando...")
+        print("\n⏳ Iniciando download...")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-
-        mp3_path = outtmpl.replace('%(ext)s', 'mp3')
-        if os.path.exists(mp3_path):
-            set_id3_tags(mp3_path, metadata)
-        print(f"\n✅ Baixado com sucesso em: {mp3_path}")
-
+        print(f"\n✅ Tudo pronto! Arquivos salvos em: {music_path}")
     except Exception as e:
-        print(f"\n❌ Erro: {e}")
-
-# Função principal do script
-def main():
-    print("=== YouTube Music Downloader ===")
-    install_dependencies()  # Instala as dependências
-    download_music()
+        print(f"\n❌ Erro durante o download: {str(e)}")
+        if "ffmpeg" in str(e).lower():
+            print("ℹ️ Solução: Execute no Termux: 'pkg install ffmpeg'")
+        elif "No such file or directory" in str(e):
+            print("ℹ️ Solução: Execute no Termux: 'termux-setup-storage'")
 
 if __name__ == "__main__":
-    main()
+    print("=== YouTube Downloader para Termux ===")
+    print("Requisitos:")
+    print("1. termux-setup-storage")
+    print("2. pkg install ffmpeg python")
+    print("3. pip install yt-dlp")
+    print("="*40)
+    download_playlist()
+
