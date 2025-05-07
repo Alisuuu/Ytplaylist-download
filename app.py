@@ -1,30 +1,40 @@
 import os
+import re
+import requests
 from pathlib import Path
 import yt_dlp
 
-# Caminho para o ffmpeg no Termux
 FFMPEG_PATH = "/data/data/com.termux/files/usr/bin/ffmpeg"
 
 def get_music_folder():
-    """Cria e retorna o caminho para a pasta Music"""
     possible_paths = [
         "/storage/emulated/0/Music",
-        "/storage/emulated/0/music",
         "/sdcard/Music",
-        "/sdcard/music",
         os.path.join(str(Path.home()), "Music"),
-        os.path.join(str(Path.home()), "music"),
     ]
     for path in possible_paths:
         if os.path.exists(path):
             return path
-    music_path = os.path.join("/storage/emulated/0", "Music")
-    os.makedirs(music_path, exist_ok=True)
-    return music_path
+    fallback = "/storage/emulated/0/Music"
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
 
-def sanitize_path_component(text):
-    """Remove caracteres inválidos para nomes de pastas"""
+def sanitize(text):
     return ''.join(c for c in text if c.isalnum() or c in " _-").strip() or "Desconhecido"
+
+def buscar_metadados_deezer(titulo):
+    try:
+        query = re.sub(r"\([^)]*\)|\[.*?\]", "", titulo).strip()  # remove "(Official Video)", etc
+        res = requests.get(f"https://api.deezer.com/search?q={query}")
+        data = res.json()
+        if data["data"]:
+            faixa = data["data"][0]
+            artista = faixa["artist"]["name"]
+            album = faixa["album"]["title"]
+            return sanitize(artista), sanitize(album)
+    except Exception:
+        pass
+    return "Desconhecido", "Desconhecido"
 
 def download_playlist():
     while True:
@@ -48,75 +58,51 @@ def download_playlist():
             elif d['status'] == 'finished':
                 print("\n✅ Download finalizado. Convertendo...")
 
+        class DeezerMetadataProcessor:
+            def __call__(self, info_dict):
+                titulo = info_dict.get("title", "")
+                artista, album = buscar_metadados_deezer(titulo)
+                info_dict["artist"] = artista
+                info_dict["album"] = album
+                return info_dict
+
         ydl_opts = {
             'ffmpeg_location': FFMPEG_PATH,
             'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': os.path.join(music_path, '%(album|Desconhecido)s/%(title)s.%(ext)s') if formato == 'mp3'
+            'outtmpl': os.path.join(music_path, '%(artist)s/%(album)s/%(title)s.%(ext)s') if formato == 'mp3'
                        else os.path.join(music_path, '%(title)s.%(ext)s'),
             'postprocessors': [
                 {
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
-                },
-                {
-                    'key': 'EmbedThumbnail',
-                    'already_have_thumbnail': False,
-                },
-                {
-                    'key': 'FFmpegMetadata',
-                },
-            ] if formato == 'mp3' else [],
-            'writethumbnail': True if formato == 'mp3' else False,
-            'embed-metadata': True if formato == 'mp3' else False,
-            'embed-thumbnail': True if formato == 'mp3' else False,
+                } if formato == 'mp3' else {},
+                {'key': 'EmbedThumbnail'},
+                {'key': 'FFmpegMetadata'},
+            ],
+            'writethumbnail': True,
+            'embedthumbnail': True,
             'progress_hooks': [progress_hook],
-            'quiet': False,
-            'no_warnings': False,
-            'extract_flat': False,
-            'postprocessor_args': [
-                '-metadata', 'album_artist=%(album_artist)s',
-                '-metadata', 'album=%(album)s',
-            ] if formato == 'mp3' else [],
             'prefer_ffmpeg': True,
+            'keepvideo': False,
+            'postprocessor_hooks': [DeezerMetadataProcessor()],
         }
 
         try:
             print("\n⏳ Iniciando download...")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=True)
-                if formato == 'mp3' and 'entries' in info_dict:  # É uma playlist
-                    album = info_dict.get('title', 'Desconhecido')
-                    # Tenta baixar a thumbnail do álbum
-                    try:
-                        thumbnail_url = info_dict.get('thumbnail')
-                        if thumbnail_url:
-                            thumb_opts = {
-                                'format': 'bestaudio/best',
-                                'outtmpl': os.path.join(music_path, f'{album}/cover.%(ext)s'),
-                                'writethumbnail': True,
-                                'skip_download': True,
-                                'quiet': True,
-                            }
-                            with yt_dlp.YoutubeDL(thumb_opts) as thumb_dl:
-                                thumb_dl.download([url])
-                    except Exception as e:
-                        print(f"⚠️ Não foi possível baixar a capa do álbum: {str(e)}")
-            
+                ydl.download([url])
             print(f"\n✅ Tudo pronto! Arquivos salvos em: {music_path}")
         except Exception as e:
-            print(f"\n❌ Erro durante o download: {str(e)}")
+            print(f"\n❌ Erro: {e}")
             if "ffmpeg" in str(e).lower():
                 print("ℹ️ Solução: Execute no Termux: 'pkg install ffmpeg'")
-            elif "No such file or directory" in str(e):
-                print("ℹ️ Solução: Execute no Termux: 'termux-setup-storage'")
+            elif "No such file" in str(e):
+                print("ℹ️ Execute: 'termux-setup-storage'")
 
 if __name__ == "__main__":
     print("=== YouTube Downloader para Termux ===")
-    print("Requisitos:")
-    print("1. termux-setup-storage")
-    print("2. pkg install ffmpeg python")
-    print("3. pip install yt-dlp")
+    print("Requisitos: termux-setup-storage | ffmpeg | python | pip install yt-dlp")
     print("="*40)
     download_playlist()
     input("\nPressione Enter para sair...")
