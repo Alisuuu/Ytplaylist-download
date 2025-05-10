@@ -45,10 +45,6 @@ def download_playlist():
             print("❌ URL inválida! Use http:// ou https://")
             continue
 
-        formato = input("🎵 Formato (mp3/mp4): ").lower().strip()
-        while formato not in ["mp3", "mp4"]:
-            formato = input("⚠️ Digite mp3 ou mp4: ").lower().strip()
-
         music_path = get_music_folder()
         print(f"📁 Os arquivos serão salvos em: {music_path}")
 
@@ -68,15 +64,14 @@ def download_playlist():
 
         ydl_opts = {
             'ffmpeg_location': FFMPEG_PATH,
-            'format': 'bestaudio/best' if formato == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': os.path.join(music_path, '%(artist)s/%(album)s/%(title)s.%(ext)s') if formato == 'mp3'
-                       else os.path.join(music_path, '%(title)s.%(ext)s'),
+            'format': 'bestaudio/best',
+            'outtmpl': os.path.join(music_path, '%(artist)s/%(album)s/%(title)s.%(ext)s'),
             'postprocessors': [
                 {
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
-                } if formato == 'mp3' else {},
+                },
                 {'key': 'EmbedThumbnail'},
                 {'key': 'FFmpegMetadata'},
             ],
