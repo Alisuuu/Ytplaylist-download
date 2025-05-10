@@ -19,4 +19,4 @@ pkg update -y && pkg upgrade -y && pkg install python ffmpeg git -y && pip insta
 - Termux com permissões de armazenamento
 - Conexão estável com internet
 
-> Dica: Para playlists privadas, execute `termux-login` primeiro
+> 
